@@ -1,0 +1,19 @@
+{
+  "name": "payment-duni",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,green \"npm run dev -w client\" \"npm run dev -w server\"",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "npm run start -w server",
+    "test": "npm run test -w server",
+    "typecheck": "npm run typecheck -w client && npm run typecheck -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

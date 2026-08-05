@@ -1,0 +1,30 @@
+{
+  "name": "@payment-duni/server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "tsx --test src/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "pg": "^8.22.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
+
