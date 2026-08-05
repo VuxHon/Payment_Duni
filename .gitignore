@@ -8,3 +8,4 @@ server/dist/
 tmp/
 *.log
 *.tsbuildinfo
+.codex_ssh_askpass*.cmd
