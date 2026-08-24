@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const headerName = z.string().regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/);
+const optionalHeaderName = z.preprocess(value => value === '' ? undefined : value, headerName.optional());
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -23,6 +26,12 @@ const schema = z.object({
   ACB_GRANT_TYPE: z.string().default('client_credentials'),
   ACB_SCOPE: z.string().optional(),
   ACB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(15000),
+  ACB_X_CHANNEL: z.string().optional(),
+  ACB_API_SECRET: z.string().optional(),
+  ACB_HEADER_CHANNEL_NAME: headerName.default('x-channel'),
+  ACB_HEADER_REQUEST_ID_NAME: headerName.default('x-request-id'),
+  ACB_HEADER_CLIENT_ID_NAME: headerName.default('x-client-id'),
+  ACB_HEADER_SECRET_NAME: optionalHeaderName,
   ACB_API_PREFIX: z.string().default('/acb/open/account-information/v1'),
   ACB_PATH_ACCOUNTS: z.string().default('/accounts'),
   ACB_PATH_BALANCES: z.string().default('/balances'),
@@ -45,4 +54,8 @@ const schema = z.object({
 export const config = schema.parse(process.env);
 export const isProduction = config.NODE_ENV === 'production';
 export const acbClientSecret = config.ACB_CLIENT_SECRET || config.SCRECET_ID || '';
+export const acbApiSecret = config.ACB_API_SECRET || acbClientSecret;
 export const acbConfigured = Boolean(config.CLIENT_ID && acbClientSecret);
+export const acbRequestHeadersConfigured = Boolean(
+  config.ACB_X_CHANNEL && config.ACB_HEADER_SECRET_NAME && acbApiSecret
+);

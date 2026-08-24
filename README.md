@@ -8,7 +8,7 @@ Website quản lý tiền vào/ra, tài khoản, số dư, lịch sử giao dị
 - Callback kết quả sổ phụ: `https://payment.byduni.com/api/callback/statement`
 - Callback có token tương thích cũ: `/api/webhooks/acb/rtxn-notification/<ACB_CALLBACK_TOKEN>`
 
-Endpoint ghi payload vào PostgreSQL durable inbox trước khi trả HTTP 200. Worker chạy nền chống trùng, chuẩn hóa giao dịch, retry theo backoff và chuyển sang `DEAD_LETTER` sau số lần cấu hình. Khi PostgreSQL không khả dụng, callback trả 503 để ACB gửi lại thay vì ACK làm mất dữ liệu.
+URL callback chính yêu cầu `x-api-key: <ACB_WEBHOOK_TOKEN>`, trả HTTP 200 ngay sau khi xác thực/body hợp lệ rồi mới ghi inbox và xử lý nền. Worker chống trùng, retry theo backoff và chuyển sang `DEAD_LETTER` sau số lần cấu hình. Request thiếu/sai API key trả 401; JSON body không hợp lệ trả 400.
 
 ## Phạm vi ACB Account Information
 
@@ -25,14 +25,16 @@ Backend proxy có audit log và tự làm mới Bearer token cho 8 API outbound:
 
 API thứ 9 là callback kết quả sổ phụ do hệ thống này tiếp nhận. Base URL, token URL, prefix và từng path đều cấu hình bằng env để chuyển Sandbox/Production mà không sửa code.
 
-`/statements` được validate cùng một ngày. `/transaction-history` hỗ trợ khoảng số giao dịch + khoảng ngày, chỉ khoảng ngày, hoặc truy vấn gần nhất bằng `limit`. HTTP 401 từ ACB làm token bị xóa/lấy lại và request được gọi lại một lần.
+`/statements` được validate cùng một ngày. `/transaction-history` hỗ trợ tối đa 100 giao dịch gần nhất, hoặc tối đa 500 giao dịch trong cùng một ngày/theo khoảng số giao dịch. HTTP 401 từ ACB làm token bị xóa/lấy lại và request được gọi lại một lần.
+
+Header outbound được cấu hình thay vì hard-code: `ACB_X_CHANNEL`, `ACB_HEADER_CHANNEL_NAME`, `ACB_HEADER_REQUEST_ID_NAME`, `ACB_HEADER_CLIENT_ID_NAME`, `ACB_HEADER_SECRET_NAME` và tùy chọn `ACB_API_SECRET`. Phải chép đúng tên header/giá trị từ curl trên ACB Developer Portal trước khi UAT.
 
 ## Bảo mật
 
 - Tài khoản dashboard nằm trong `ADMIN_USERNAME`/`ADMIN_PASSWORD` trên VPS, không nằm trong database hoặc Git.
 - ACB secret, callback token và PostgreSQL password chỉ nằm trong `.env` bị ignore.
 - Cookie phiên `HttpOnly`, `Secure` ở production và `SameSite=Strict`.
-- URL chính `/api/callback` được giữ công khai theo contract đã khai báo với ACB và vẫn ghi cờ xác thực vào audit. Các alias/callback chuyên biệt yêu cầu Bearer/`x-webhook-token`, hoặc `x-client-id` + `x-client-secret` khi `ACB_WEBHOOK_AUTH_REQUIRED=true`.
+- URL chính `/api/callback` chỉ chấp nhận API key qua header `x-api-key`. Các alias/callback chuyên biệt vẫn hỗ trợ Bearer/`x-webhook-token`, hoặc `x-client-id` + `x-client-secret` khi `ACB_WEBHOOK_AUTH_REQUIRED=true`.
 - Header nhạy cảm và secret bị loại khỏi audit log.
 
 ## Chạy và kiểm tra

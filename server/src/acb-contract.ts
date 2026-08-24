@@ -25,8 +25,23 @@ export function historyQueryError(input: Record<string, unknown>) {
   const dateMode = fromDate !== undefined || toDate !== undefined;
   if (rangeNumberMode && (fromNumber === undefined || toNumber === undefined || !fromDate || !toDate)) return 'Khoảng số giao dịch cần đủ from/to_transaction_number và from/to_date';
   if (!rangeNumberMode && dateMode && (!fromDate || !toDate)) return 'Khoảng ngày cần đủ from_date và to_date';
-  if (!rangeNumberMode && !dateMode && (limit === undefined || Number(limit) < 1)) return 'Cần khoảng giao dịch, khoảng ngày hoặc limit';
+  if (!rangeNumberMode && !dateMode) {
+    const latestLimit = Number(limit);
+    if (!Number.isInteger(latestLimit) || latestLimit < 1 || latestLimit > 100) return 'Truy vấn gần nhất yêu cầu limit từ 1 đến 100';
+  }
   if ((fromDate && !datePattern.test(String(fromDate))) || (toDate && !datePattern.test(String(toDate)))) return 'Ngày phải theo định dạng YYYY-MM-DD';
+  if (dateMode && String(fromDate) !== String(toDate)) return 'ACB chỉ cho phép truy vấn tối đa 500 giao dịch trong cùng một ngày';
+  if (dateMode && limit !== undefined) {
+    const dailyLimit = Number(limit);
+    if (!Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 500) return 'Truy vấn theo ngày yêu cầu limit từ 1 đến 500';
+  }
+  if (rangeNumberMode) {
+    const first = Number(fromNumber);
+    const last = Number(toNumber);
+    if (!Number.isInteger(first) || !Number.isInteger(last) || first < 0 || last < first || last - first + 1 > 500) {
+      return 'Khoảng số giao dịch phải hợp lệ và không vượt quá 500 giao dịch';
+    }
+  }
   return null;
 }
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { historyQueryError, statementsQueryError } from './acb-contract.js';
-import { acbClientSecret, acbConfigured, config } from './config.js';
+import { acbApiSecret, acbClientSecret, acbConfigured, acbRequestHeadersConfigured, config } from './config.js';
 import { pool } from './db.js';
 
 type Json = Record<string, unknown> | unknown[];
@@ -96,8 +96,12 @@ async function request(operation: string, method: Method, suffix: string, data: 
         accept: 'application/json',
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',
-        'x-global-transaction-id': requestId,
-        ...(config.CLIENT_ID ? { 'x-client-id': config.CLIENT_ID } : {})
+        [config.ACB_HEADER_REQUEST_ID_NAME]: requestId,
+        ...(config.CLIENT_ID ? { [config.ACB_HEADER_CLIENT_ID_NAME]: config.CLIENT_ID } : {}),
+        ...(config.ACB_X_CHANNEL ? { [config.ACB_HEADER_CHANNEL_NAME]: config.ACB_X_CHANNEL } : {}),
+        ...(config.ACB_HEADER_SECRET_NAME && acbApiSecret
+          ? { [config.ACB_HEADER_SECRET_NAME]: acbApiSecret }
+          : {})
       },
       ...(method === 'POST' ? { body: JSON.stringify(data) } : {}),
       signal: AbortSignal.timeout(config.ACB_REQUEST_TIMEOUT_MS)
@@ -138,6 +142,7 @@ export function validateHistoryQuery(input: Record<string, unknown>) {
 
 export const acb = {
   configured: () => acbConfigured,
+  requestHeadersConfigured: () => acbRequestHeadersConfigured,
   accounts: (query: Record<string, unknown>) => request('accounts', 'GET', config.ACB_PATH_ACCOUNTS, query),
   balances: (query: Record<string, unknown>) => request('balances', 'GET', config.ACB_PATH_BALANCES, query),
   history: (query: Record<string, unknown>) => { validateHistoryQuery(query); return request('transaction-history', 'GET', config.ACB_PATH_TRANSACTION_HISTORY, query); },

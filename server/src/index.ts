@@ -32,6 +32,11 @@ function webhookAuthenticated(req: Request) {
   );
 }
 
+function callbackApiKeyAuthenticated(req: Request) {
+  const supplied = String(req.headers['x-api-key'] || '');
+  return Boolean(config.ACB_WEBHOOK_TOKEN && supplied && safeEqual(supplied, config.ACB_WEBHOOK_TOKEN));
+}
+
 async function receiveWebhook(req: Request, res: Response, forcedType?: InboxEventType, allowPublic = false) {
   const pathTokenOk = req.params.token ? safeEqual(String(req.params.token), config.ACB_CALLBACK_TOKEN) : false;
   const headerAuth = webhookAuthenticated(req);
@@ -62,15 +67,18 @@ function receivePublicCallbackImmediate(req: Request, res: Response) {
   const body = req.body;
   const headers = req.headers;
   const remoteIp = req.ip || null;
-  const authenticated = webhookAuthenticated(req);
+  const authenticated = callbackApiKeyAuthenticated(req);
+
+  if (config.ACB_WEBHOOK_AUTH_REQUIRED === 'true' && !authenticated) {
+    return res.status(401).json({ errorCode: '01', errorMessage: 'Unauthorized' });
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ errorCode: '02', errorMessage: 'Invalid JSON body' });
+  }
 
   // ACB cần ACK ngay; việc ghi durable inbox và xử lý nghiệp vụ diễn ra sau response.
   res.status(200).json({ errorCode: '00', errorMessage: 'Success' });
-
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    console.warn('Callback công khai đã ACK nhưng body không phải JSON object');
-    return;
-  }
 
   setImmediate(() => {
     void enqueueWebhook({
@@ -115,6 +123,7 @@ app.get('/api/config', (_req, res) => {
     callbackUrl: `${root}/api/callback`,
     statementCallbackUrl: `${root}/api/callback/statement`,
     acbConfigured: acb.configured(),
+    acbRequestHeadersConfigured: acb.requestHeadersConfigured(),
     postgresSsl: config.POSTGRES_SSL === 'true',
     environment: config.NODE_ENV
   });
