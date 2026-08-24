@@ -58,6 +58,34 @@ async function receiveWebhook(req: Request, res: Response, forcedType?: InboxEve
   }
 }
 
+function receivePublicCallbackImmediate(req: Request, res: Response) {
+  const body = req.body;
+  const headers = req.headers;
+  const remoteIp = req.ip || null;
+  const authenticated = webhookAuthenticated(req);
+
+  // ACB cần ACK ngay; việc ghi durable inbox và xử lý nghiệp vụ diễn ra sau response.
+  res.status(200).json({ errorCode: '00', errorMessage: 'Success' });
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    console.warn('Callback công khai đã ACK nhưng body không phải JSON object');
+    return;
+  }
+
+  setImmediate(() => {
+    void enqueueWebhook({
+      body,
+      headers,
+      remoteIp,
+      authenticated,
+      eventType: classifyEvent(body)
+    }).then((result) => {
+      if (!result.duplicate) return runInboxOnce();
+    }).catch((error) => {
+      console.error('Callback đã ACK 200 nhưng không thể ghi durable inbox', error);
+    });
+  });
+}
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -71,8 +99,8 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/logout', (_req, res) => { clearSession(res); res.json({ ok: true }); });
 app.get('/api/auth/session', requireAuth, (_req, res) => res.json({ authenticated: true, username: config.ADMIN_USERNAME }));
 
-// URL đã khai báo với ACB: luôn nhận công khai, ghi nhận authenticated=false nếu không có credential.
-app.post('/api/callback', (req, res) => receiveWebhook(req, res, undefined, true));
+// URL đã khai báo với ACB: ACK 200 ngay, sau đó mới ghi inbox/xử lý nền.
+app.post('/api/callback', receivePublicCallbackImmediate);
 app.post('/api/callback/statement', (req, res) => receiveWebhook(req, res, 'STATEMENT_RESULT'));
 app.post('/api/webhooks/acb/rtxn-notification/:token', (req, res) => receiveWebhook(req, res, 'TRANSACTION_NOTIFICATION'));
 app.post('/api/webhooks/acb/rtxn-notification', (req, res) => receiveWebhook(req, res, 'TRANSACTION_NOTIFICATION'));
