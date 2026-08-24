@@ -3,7 +3,7 @@ module.exports = {
     name: 'payment-duni',
     cwd: '/root/Payment_Duni',
     script: 'server/dist/index.js',
-    interpreter: '/root/.nvm/versions/node/v20.20.2/bin/node',
+    interpreter: 'node',
     instances: 1,
     exec_mode: 'fork',
     autorestart: true,
