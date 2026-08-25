@@ -5,6 +5,12 @@ import { retryDelaySeconds } from './acb-contract.js';
 
 let running = false;
 
+export function isPermanentAdminSyncStatus(status: number | null) {
+  return status != null
+    && status >= 400 && status < 500
+    && ![408, 425, 429].includes(status);
+}
+
 async function deliver(row: { id: string; payload: Record<string, unknown>; attempts: number }) {
   const body = JSON.stringify(row.payload);
   const timestamp = String(Date.now());
@@ -45,8 +51,12 @@ export async function runAdminSyncOnce() {
       try {
         await deliver(row);
       } catch (error) {
-        const dead = row.attempts >= config.ADMIN_SYNC_MAX_ATTEMPTS;
         const status = Number((error as { status?: number })?.status) || null;
+        // Mất mạng, AdminDuni dừng hoặc HTTP 5xx phải retry vô hạn để không làm
+        // mất giao dịch. Chỉ lỗi 4xx mang tính cấu hình/payload mới dead-letter
+        // sau ngưỡng, để người vận hành sửa rồi chủ động requeue.
+        const permanentClientError = isPermanentAdminSyncStatus(status);
+        const dead = permanentClientError && row.attempts >= config.ADMIN_SYNC_MAX_ATTEMPTS;
         await pool.query(`UPDATE admin_sync_outbox SET status=$2,locked_at=NULL,response_status=$3,
           error_message=$4,next_attempt_at=now()+($5*interval '1 second'),updated_at=now() WHERE id=$1`, [
           row.id, dead ? 'DEAD_LETTER' : 'RETRY', status,

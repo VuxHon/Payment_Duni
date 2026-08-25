@@ -8,7 +8,7 @@ Website quản lý tiền vào/ra, tài khoản, số dư, lịch sử giao dị
 - Callback kết quả sổ phụ: `https://payment.byduni.com/api/callback/statement`
 - Callback có token tương thích cũ: `/api/webhooks/acb/rtxn-notification/<ACB_CALLBACK_TOKEN>`
 
-URL callback chính yêu cầu `x-api-key: <ACB_WEBHOOK_TOKEN>`. Hệ thống chỉ trả HTTP 200 sau khi payload đã được ghi nguyên tử và `fsync` vào local spool trên VPS; vì vậy PostgreSQL `192.168.31.24` tạm ngừng vẫn không làm mất callback. Worker chuyển bản ghi sang PostgreSQL, chỉ xóa file spool sau khi PostgreSQL xác nhận, sau đó tạo outbox để gửi HMAC sang AdminDuni. Cả inbox và outbox đều chống trùng, retry theo backoff và có `DEAD_LETTER`. Request thiếu/sai API key trả 401; JSON body không hợp lệ trả 400.
+URL callback chính yêu cầu `x-api-key: <ACB_WEBHOOK_TOKEN>`. Hệ thống chỉ trả HTTP 200 sau khi payload đã được ghi nguyên tử và `fsync` vào local spool trên VPS; vì vậy PostgreSQL `192.168.31.24` tạm ngừng vẫn không làm mất callback. Worker chuyển bản ghi sang PostgreSQL, chỉ xóa file spool sau khi PostgreSQL xác nhận, sau đó tạo outbox để gửi HMAC sang AdminDuni. Cả inbox và outbox đều chống trùng, retry theo backoff; mất mạng/AdminDuni/HTTP 5xx được retry vô hạn, còn lỗi 4xx cố định mới chuyển `DEAD_LETTER` sau ngưỡng cấu hình. Request thiếu/sai API key trả 401; JSON body không hợp lệ trả 400.
 
 Luồng lưu trữ: `ACB → local spool VPS → Payment PostgreSQL → admin_sync_outbox → AdminDuni`. Sandbox được gửi với `sourceEnvironment=SANDBOX` và AdminDuni cô lập vào bảng staging; chỉ `PRODUCTION` mới được ghi vào `bank_transaction` và chạy logic ghép đơn/kế toán. `ADMIN_SYNC_SHARED_SECRET` ở Payment phải trùng `ACB_PAYMENT_SHARED_SECRET` ở AdminDuni.
 
