@@ -1,15 +1,9 @@
 import { createHmac } from 'node:crypto';
 import { adminSyncConfigured, config } from './config.js';
 import { pool } from './db.js';
-import { retryDelaySeconds } from './acb-contract.js';
+import { isPermanentAdminSyncStatus, retryDelaySeconds } from './acb-contract.js';
 
 let running = false;
-
-export function isPermanentAdminSyncStatus(status: number | null) {
-  return status != null
-    && status >= 400 && status < 500
-    && ![408, 425, 429].includes(status);
-}
 
 async function deliver(row: { id: string; payload: Record<string, unknown>; attempts: number }) {
   const body = JSON.stringify(row.payload);

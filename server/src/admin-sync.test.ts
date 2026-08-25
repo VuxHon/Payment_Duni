@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isPermanentAdminSyncStatus } from './admin-sync.js';
+import { isPermanentAdminSyncStatus } from './acb-contract.js';
 
 test('AdminDuni outage and rate limits remain retryable', () => {
   assert.equal(isPermanentAdminSyncStatus(null), false);

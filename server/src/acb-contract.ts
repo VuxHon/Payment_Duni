@@ -53,3 +53,9 @@ export function classifyEvent(body: Record<string, unknown>): InboxEventType {
 export function retryDelaySeconds(attempts: number) {
   return Math.min(900, 2 ** Math.max(0, attempts - 1) * 5);
 }
+
+export function isPermanentAdminSyncStatus(status: number | null) {
+  return status != null
+    && status >= 400 && status < 500
+    && ![408, 425, 429].includes(status);
+}
