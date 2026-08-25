@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Duni Page to Markdown",
+  "version": "1.0.0",
+  "description": "Xuất trang hiện tại hoặc phần văn bản đã chọn thành Markdown, xử lý hoàn toàn cục bộ.",
+  "permissions": ["activeTab", "scripting", "downloads"],
+  "action": {
+    "default_title": "Xuất trang thành Markdown",
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "export-current-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Xuất nội dung chính của trang hiện tại"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
