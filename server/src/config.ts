@@ -22,7 +22,7 @@ const schema = z.object({
   SCRECET_ID: z.string().optional(),
   ACB_CLIENT_SECRET: z.string().optional(),
   ACB_BASE_URL: z.string().url().default('https://sandbox.acb.com.vn'),
-  ACB_TOKEN_URL: z.string().url().default('https://sandbox.acb.com.vn/auth/realms/soba/protocol/openid-connect/token'),
+  ACB_TOKEN_URL: z.string().url().default('https://sandbox.acb.com.vn/acb/open/auth/realms/soba/protocol/openid-connect/token'),
   ACB_GRANT_TYPE: z.string().default('client_credentials'),
   ACB_SCOPE: z.string().optional(),
   ACB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(15000),
