@@ -13,7 +13,10 @@ type Transaction = {
 };
 type Summary = { totalCredit: number; totalDebit: number; net: number; count: number; recentDeliveries: number; lastWebhookAt: string | null; daily: Array<{ date: string; credit: number; debit: number }> };
 type ListResponse = { items: Transaction[]; total: number; page: number; pageSize: number };
-type AppConfig = { callbackUrl: string; statementCallbackUrl: string; acbConfigured: boolean; acbRequestHeadersConfigured: boolean; postgresSsl: boolean; environment: string };
+type AppConfig = {
+  callbackUrl: string; statementCallbackUrl: string; acbConfigured: boolean; acbRequestHeadersConfigured: boolean;
+  acbSandboxConfigured: boolean; acbTestAccount: string | null; postgresSsl: boolean; environment: string;
+};
 type Ops = {
   queues: Record<string, number>;
   latest: Array<{ id: string; event_type: string; status: string; attempts: number; transaction_count: number; error_message: string | null; authenticated: boolean; received_at: string; processed_at: string | null }>;
@@ -79,6 +82,9 @@ function Accounts({ config, reportError }: { config: AppConfig | null; reportErr
   const [account, setAccount] = useState(''); const [from, setFrom] = useState(today); const [to, setTo] = useState(today);
   const [mode, setMode] = useState<'accounts' | 'balance' | 'history' | 'statements' | 'retrieve' | 'inquiry'>('accounts');
   const [result, setResult] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const [testAmount, setTestAmount] = useState('10000'); const [testCount, setTestCount] = useState('1');
+  const [testDescription, setTestDescription] = useState('BYDUNI SANDBOX TEST');
+  useEffect(() => { if (!account && config?.acbTestAccount) setAccount(config.acbTestAccount); }, [account, config?.acbTestAccount]);
   const outboundReady = Boolean(config?.acbConfigured && config?.acbRequestHeadersConfigured);
   const execute = async (selected = mode) => {
     setMode(selected); setBusy(true); reportError('');
@@ -91,12 +97,49 @@ function Accounts({ config, reportError }: { config: AppConfig | null; reportErr
       setResult(await api(`/api/acb/${paths[selected]}?${qs}`));
     } catch (error) { reportError((error as Error).message); } finally { setBusy(false); }
   };
+  const simulate = async (direction: 'credit' | 'debit') => {
+    setBusy(true); reportError('');
+    try {
+      setResult(await api(`/api/acb/sandbox/${direction}`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: Number(testAmount), description: testDescription, numberOfTransaction: Number(testCount) })
+      }));
+    } catch (error) { reportError((error as Error).message); } finally { setBusy(false); }
+  };
   const register = async () => {
     setBusy(true); reportError('');
     try { setResult(await api('/api/acb/e-statement/registration', { method: 'POST', body: JSON.stringify({ account, callback_url: config?.statementCallbackUrl }) })); }
     catch (error) { reportError((error as Error).message); } finally { setBusy(false); }
   };
-  return <div className="workspace-grid"><Panel eyebrow="ACB ACCOUNT INFORMATION" title="Tra cứu trực tiếp ACB Sandbox"><div className={`config-banner ${outboundReady ? 'ready' : 'warning'}`}><ShieldCheck />{outboundReady ? 'Client credentials và header ACB đã được cấu hình; Bearer token tự làm mới khi hết hạn.' : 'Chưa đủ ClientID/SecretID, X-Channel hoặc tên header ACB từ Developer Portal.'}</div><div className="query-form"><label>Số tài khoản<input value={account} onChange={e => setAccount(e.target.value)} placeholder="Bỏ trống khi lấy danh sách tài khoản" /></label><label>Từ ngày<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Đến ngày<input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div><div className="action-grid"><button onClick={() => execute('accounts')}>Danh sách tài khoản</button><button onClick={() => execute('balance')}>Số dư</button><button onClick={() => execute('history')}>Lịch sử giao dịch</button><button onClick={() => execute('statements')}>Danh sách giao dịch</button><button onClick={() => execute('retrieve')}>Yêu cầu sổ phụ</button><button onClick={() => execute('inquiry')}>Sổ phụ đồng bộ</button><button onClick={register}>Đăng ký giấy báo nợ/có</button></div><p className="form-hint">ACB cho phép tối đa 100 giao dịch gần nhất hoặc tối đa 500 giao dịch trong cùng một ngày.</p></Panel><Panel eyebrow={mode.toUpperCase()} title="Kết quả ACB">{busy ? <div className="loading-block"><RefreshCw className="spin" /> Đang kết nối ACB…</div> : <ResultView data={result} />}</Panel></div>;
+  return <div className="workspace-grid">
+    <Panel eyebrow="ACB ACCOUNT INFORMATION" title="Tra cứu trực tiếp ACB Sandbox">
+      <div className={`config-banner ${outboundReady ? 'ready' : 'warning'}`}><ShieldCheck />
+        {outboundReady ? 'Client credentials, X-Channel, X-Provider-ID và X-Service đã được cấu hình.' : 'Chưa đủ ClientID/SecretID, X-Channel, X-Provider-ID hoặc X-Service.'}
+      </div>
+      <div className="query-form">
+        <label>Số tài khoản<input value={account} onChange={e => setAccount(e.target.value)} placeholder="Bỏ trống khi lấy danh sách tài khoản" /></label>
+        <label>Từ ngày<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
+        <label>Đến ngày<input type="date" value={to} onChange={e => setTo(e.target.value)} /></label>
+      </div>
+      <div className="action-grid">
+        <button onClick={() => execute('accounts')}>Danh sách tài khoản</button><button onClick={() => execute('balance')}>Số dư</button>
+        <button onClick={() => execute('history')}>Lịch sử giao dịch</button><button onClick={() => execute('statements')}>Danh sách giao dịch</button>
+        <button onClick={() => execute('retrieve')}>Yêu cầu sổ phụ</button><button onClick={() => execute('inquiry')}>Sổ phụ đồng bộ</button>
+        <button onClick={register}>Đăng ký giấy báo nợ/có</button>
+      </div>
+      <p className="form-hint">ACB cho phép tối đa 100 giao dịch gần nhất hoặc tối đa 500 giao dịch trong cùng một ngày.</p>
+      <div className="sandbox-tools">
+        <p className="eyebrow">TẠO GIAO DỊCH KIỂM THỬ</p>
+        <div className="query-form">
+          <label>Số tiền<input type="number" min="1" max="500000000" value={testAmount} onChange={e => setTestAmount(e.target.value)} /></label>
+          <label>Số giao dịch<input type="number" min="1" max="10" value={testCount} onChange={e => setTestCount(e.target.value)} /></label>
+          <label>Nội dung<input value={testDescription} maxLength={255} onChange={e => setTestDescription(e.target.value)} /></label>
+        </div>
+        <div className="action-grid"><button disabled={!config?.acbSandboxConfigured || busy} onClick={() => simulate('credit')}>Tạo tiền vào sandbox</button><button disabled={!config?.acbSandboxConfigured || busy} onClick={() => simulate('debit')}>Tạo tiền ra sandbox</button></div>
+      </div>
+    </Panel>
+    <Panel eyebrow={mode.toUpperCase()} title="Kết quả ACB">{busy ? <div className="loading-block"><RefreshCw className="spin" /> Đang kết nối ACB…</div> : <ResultView data={result} />}</Panel>
+  </div>;
 }
 
 function Operations({ ops, load, requeue }: { ops: Ops | null; load: () => void; requeue: (id: string) => void }) {

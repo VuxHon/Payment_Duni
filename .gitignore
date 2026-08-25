@@ -9,6 +9,8 @@ tmp/
 *.log
 *.tsbuildinfo
 .codex_ssh_askpass*.cmd
+.codex_tmp*
 
 # Dữ liệu kiểm thử/nghiệp vụ do ngân hàng cung cấp (không đưa lên Git)
 Dữ Liệu Kiểm Thử*/
+Tài liệu Markdown/

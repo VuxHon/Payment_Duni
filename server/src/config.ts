@@ -27,20 +27,27 @@ const schema = z.object({
   ACB_SCOPE: z.string().optional(),
   ACB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(15000),
   ACB_X_CHANNEL: z.string().optional(),
+  ACB_PROVIDER_ID: z.string().optional(),
+  ACB_SERVICE: z.string().optional(),
+  ACB_TEST_ACCOUNT: z.string().optional(),
   ACB_API_SECRET: z.string().optional(),
   ACB_HEADER_CHANNEL_NAME: headerName.default('x-channel'),
   ACB_HEADER_REQUEST_ID_NAME: headerName.default('x-request-id'),
   ACB_HEADER_CLIENT_ID_NAME: headerName.default('x-client-id'),
+  ACB_HEADER_PROVIDER_ID_NAME: headerName.default('x-provider-id'),
+  ACB_HEADER_SERVICE_NAME: headerName.default('x-service'),
   ACB_HEADER_SECRET_NAME: optionalHeaderName,
   ACB_API_PREFIX: z.string().default('/acb/open/account-information/v1'),
-  ACB_PATH_ACCOUNTS: z.string().default('/accounts'),
-  ACB_PATH_BALANCES: z.string().default('/balances'),
-  ACB_PATH_TRANSACTION_HISTORY: z.string().default('/transaction-history'),
-  ACB_PATH_STATEMENTS: z.string().default('/statements'),
-  ACB_PATH_TRANSACTION_DETAIL: z.string().default('/transaction/detail'),
-  ACB_PATH_STATEMENT_RETRIEVE: z.string().default('/statement/retrieve'),
-  ACB_PATH_STATEMENT_INQUIRY: z.string().default('/account/statement/inquiry'),
-  ACB_PATH_ESTATEMENT_REGISTRATION: z.string().default('/e-statement/registration'),
+  ACB_PATH_ACCOUNTS: z.string().default('/acb/open/customers/account/v1/accounts'),
+  ACB_PATH_BALANCES: z.string().default('/acb/open/customers/account/v1/balances'),
+  ACB_PATH_TRANSACTION_HISTORY: z.string().default('/acb/open/accounts/transactions/v1/transaction-history'),
+  ACB_PATH_STATEMENTS: z.string().default('/acb/open/customers/account/v1/statements'),
+  ACB_PATH_TRANSACTION_DETAIL: z.string().default('/acb/open/customers/account/v1/transaction/detail'),
+  ACB_PATH_STATEMENT_RETRIEVE: z.string().default('/acb/open/oe/current-account/v1/statement/retrieve'),
+  ACB_PATH_STATEMENT_INQUIRY: z.string().default('/acb/open/oe/current-account/v1/account/statement/inquiry'),
+  ACB_PATH_ESTATEMENT_REGISTRATION: z.string().default('/acb/open/oe/current-account/v1/e-statement/registration'),
+  ACB_PATH_SANDBOX_CREDIT: z.string().default('/acb/open/payment/payment-execution/v1/credit'),
+  ACB_PATH_SANDBOX_DEBIT: z.string().default('/acb/open/payment/payment-execution/v1/debit'),
 
   ACB_CALLBACK_TOKEN: z.string().min(20),
   ACB_WEBHOOK_TOKEN: z.string().optional(),
@@ -56,6 +63,5 @@ export const isProduction = config.NODE_ENV === 'production';
 export const acbClientSecret = config.ACB_CLIENT_SECRET || config.SCRECET_ID || '';
 export const acbApiSecret = config.ACB_API_SECRET || acbClientSecret;
 export const acbConfigured = Boolean(config.CLIENT_ID && acbClientSecret);
-export const acbRequestHeadersConfigured = Boolean(
-  config.ACB_X_CHANNEL && config.ACB_HEADER_SECRET_NAME && acbApiSecret
-);
+export const acbRequestHeadersConfigured = Boolean(config.ACB_X_CHANNEL && config.ACB_PROVIDER_ID && config.ACB_SERVICE);
+export const acbSandboxConfigured = Boolean(acbConfigured && acbRequestHeadersConfigured);

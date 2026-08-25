@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { historyQueryError, statementsQueryError } from './acb-contract.js';
-import { acbApiSecret, acbClientSecret, acbConfigured, acbRequestHeadersConfigured, config } from './config.js';
+import { acbApiSecret, acbClientSecret, acbConfigured, acbRequestHeadersConfigured, acbSandboxConfigured, config } from './config.js';
 import { pool } from './db.js';
 
 type Json = Record<string, unknown> | unknown[];
@@ -18,6 +18,8 @@ const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 const combinePath = (suffix: string) => {
+  if (/^https?:\/\//i.test(suffix)) return new URL(suffix).pathname;
+  if (suffix.startsWith('/acb/') || suffix.startsWith('/auth/')) return suffix;
   const prefix = config.ACB_API_PREFIX.replace(/\/$/, '');
   return `${prefix}/${suffix.replace(/^\//, '')}`;
 };
@@ -98,6 +100,8 @@ async function request(operation: string, method: Method, suffix: string, data: 
         'content-type': 'application/json',
         [config.ACB_HEADER_REQUEST_ID_NAME]: requestId,
         ...(config.CLIENT_ID ? { [config.ACB_HEADER_CLIENT_ID_NAME]: config.CLIENT_ID } : {}),
+        ...(config.ACB_PROVIDER_ID ? { [config.ACB_HEADER_PROVIDER_ID_NAME]: config.ACB_PROVIDER_ID } : {}),
+        ...(config.ACB_SERVICE ? { [config.ACB_HEADER_SERVICE_NAME]: config.ACB_SERVICE } : {}),
         ...(config.ACB_X_CHANNEL ? { [config.ACB_HEADER_CHANNEL_NAME]: config.ACB_X_CHANNEL } : {}),
         ...(config.ACB_HEADER_SECRET_NAME && acbApiSecret
           ? { [config.ACB_HEADER_SECRET_NAME]: acbApiSecret }
@@ -140,15 +144,53 @@ export function validateHistoryQuery(input: Record<string, unknown>) {
   if (error) throw new AcbApiError(error, 400, null);
 }
 
+function remap(input: Record<string, unknown>, fields: Record<string, string[]>) {
+  const result = { ...input };
+  for (const [target, aliases] of Object.entries(fields)) {
+    const value = aliases.map(key => input[key]).find(item => item !== undefined && item !== null && item !== '');
+    for (const alias of aliases) delete result[alias];
+    if (value !== undefined) result[target] = value;
+  }
+  return result;
+}
+
+function sandboxPayload(input: Record<string, unknown>) {
+  const amount = Number(input.transactionAmount ?? input.amount);
+  const numberOfTransaction = Number(input.numberOfTransaction ?? 1);
+  const description = String(input.description || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').trim();
+  if (!Number.isFinite(amount) || amount < 1 || amount > 500_000_000) {
+    throw new AcbApiError('Số tiền test phải từ 1 đến 500.000.000 VND', 400, null);
+  }
+  if (!Number.isInteger(numberOfTransaction) || numberOfTransaction < 1 || numberOfTransaction > 10) {
+    throw new AcbApiError('numberOfTransaction phải từ 1 đến 10', 400, null);
+  }
+  if (!description || description.length > 255) {
+    throw new AcbApiError('Nội dung test phải từ 1 đến 255 ký tự', 400, null);
+  }
+  return {
+    requestTrace: randomUUID(),
+    requestDateTime: new Date().toISOString(),
+    requestParameters: { transactionAmount: amount, description, numberOfTransaction }
+  };
+}
+
 export const acb = {
   configured: () => acbConfigured,
   requestHeadersConfigured: () => acbRequestHeadersConfigured,
+  sandboxConfigured: () => acbSandboxConfigured,
   accounts: (query: Record<string, unknown>) => request('accounts', 'GET', config.ACB_PATH_ACCOUNTS, query),
-  balances: (query: Record<string, unknown>) => request('balances', 'GET', config.ACB_PATH_BALANCES, query),
+  balances: (query: Record<string, unknown>) => request('balances', 'GET', config.ACB_PATH_BALANCES,
+    remap(query, { account_number: ['account_number', 'account'] })),
   history: (query: Record<string, unknown>) => { validateHistoryQuery(query); return request('transaction-history', 'GET', config.ACB_PATH_TRANSACTION_HISTORY, query); },
-  statements: (query: Record<string, unknown>) => { validateStatementsQuery(query); return request('statements', 'GET', config.ACB_PATH_STATEMENTS, query); },
+  statements: (query: Record<string, unknown>) => { validateStatementsQuery(query); return request('statements', 'GET', config.ACB_PATH_STATEMENTS,
+    remap(query, { account_number: ['account_number', 'account'] })); },
   transactionDetail: (query: Record<string, unknown>) => request('transaction-detail', 'GET', config.ACB_PATH_TRANSACTION_DETAIL, query),
-  statementRetrieve: (query: Record<string, unknown>) => request('statement-retrieve', 'GET', config.ACB_PATH_STATEMENT_RETRIEVE, query),
-  statementInquiry: (query: Record<string, unknown>) => request('statement-inquiry', 'GET', config.ACB_PATH_STATEMENT_INQUIRY, query),
-  registerEStatement: (body: Record<string, unknown>) => request('e-statement-registration', 'POST', config.ACB_PATH_ESTATEMENT_REGISTRATION, body)
+  statementRetrieve: (query: Record<string, unknown>) => request('statement-retrieve', 'GET', config.ACB_PATH_STATEMENT_RETRIEVE,
+    remap(query, { accountNumber: ['accountNumber', 'account_number', 'account'], fromDate: ['fromDate', 'from_date'], toDate: ['toDate', 'to_date'] })),
+  statementInquiry: (query: Record<string, unknown>) => request('statement-inquiry', 'GET', config.ACB_PATH_STATEMENT_INQUIRY,
+    remap(query, { accountNumber: ['accountNumber', 'account_number', 'account'], fromDate: ['fromDate', 'from_date'], toDate: ['toDate', 'to_date'] })),
+  registerEStatement: (body: Record<string, unknown>) => request('e-statement-registration', 'POST', config.ACB_PATH_ESTATEMENT_REGISTRATION, body),
+  sandboxCredit: (body: Record<string, unknown>) => request('sandbox-credit', 'POST', config.ACB_PATH_SANDBOX_CREDIT, sandboxPayload(body)),
+  sandboxDebit: (body: Record<string, unknown>) => request('sandbox-debit', 'POST', config.ACB_PATH_SANDBOX_DEBIT, sandboxPayload(body))
 };

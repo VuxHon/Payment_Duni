@@ -42,26 +42,37 @@ function direction(value: unknown, amount: number): NormalizedTransaction['direc
   return amount < 0 ? 'DEBIT' : 'UNKNOWN';
 }
 
+const object = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
+  ? value as Record<string, unknown> : {};
+
 export function transactionObjects(body: unknown): Record<string, unknown>[] {
   if (Array.isArray(body)) return body.filter(v => v && typeof v === 'object') as Record<string, unknown>[];
   if (!body || typeof body !== 'object') return [];
   const root = body as Record<string, unknown>;
+  const requests = pick(root, ['requests']);
+  if (Array.isArray(requests)) return requests.flatMap(item => transactionObjects(object(item).requestParams || item));
+  const requestParams = pick(root, ['requestParams']);
+  if (requestParams && typeof requestParams === 'object') return transactionObjects(requestParams);
   for (const key of ['transactions', 'transactionList', 'items', 'records', 'data']) {
     const value = pick(root, [key]);
     if (Array.isArray(value)) return value.filter(v => v && typeof v === 'object') as Record<string, unknown>[];
     if (value && typeof value === 'object' && key === 'data') return transactionObjects(value);
   }
-  return [root];
+  return pick(root, ['amount', 'transactionAmount', 'transactionCode', 'transactionNumber']) !== undefined ? [root] : [];
 }
 
 export function normalizeTransaction(raw: Record<string, unknown>): NormalizedTransaction {
   const amountValue = number(pick(raw, ['amount', 'transactionAmount', 'txnAmount', 'value', 'creditAmount', 'debitAmount']));
-  const directionValue = direction(pick(raw, ['direction', 'transactionType', 'txnType', 'type', 'creditDebitIndicator', 'drCr', 'indicator']), amountValue);
+  const directionValue = direction(pick(raw, ['debitOrCredit', 'direction', 'transactionType', 'txnType', 'type', 'creditDebitIndicator', 'drCr', 'indicator']), amountValue);
+  const attributes = object(pick(raw, ['transactionEntityAttribute']));
+  const credit = directionValue === 'CREDIT';
   const normalized = {
-    bankReference: text(pick(raw, ['transactionNumber', 'transactionId', 'transactionReference', 'referenceNumber', 'reference', 'refNo', 'traceId', 'txnId'])),
+    bankReference: text(pick(raw, ['transactionCode', 'transactionNumber', 'transactionId', 'transactionReference', 'referenceNumber', 'reference', 'refNo', 'traceId', 'txnId']) ?? pick(attributes, ['traceNumber', 'referenceNumber'])),
     accountNumber: text(pick(raw, ['accountNumber', 'accountNo', 'bankAccount', 'beneficiaryAccount', 'toAccount'])),
-    counterpartyAccount: text(pick(raw, ['counterpartyAccount', 'senderAccount', 'fromAccount', 'remitterAccount', 'sourceAccount'])),
-    counterpartyName: text(pick(raw, ['counterpartyName', 'senderName', 'remitterName', 'customerName'])),
+    counterpartyAccount: text(pick(raw, ['counterpartyAccount', 'senderAccount', 'fromAccount', 'remitterAccount', 'sourceAccount'])
+      ?? pick(attributes, credit ? ['remitterAccountNumber', 'beneficiaryAccountNumber'] : ['beneficiaryAccountNumber', 'remitterAccountNumber'])),
+    counterpartyName: text(pick(raw, ['counterpartyName', 'senderName', 'remitterName', 'customerName'])
+      ?? pick(attributes, credit ? ['remitterName', 'beneficiaryName'] : ['beneficiaryName', 'remitterName'])),
     direction: directionValue,
     amount: Math.abs(amountValue),
     currency: text(pick(raw, ['currency', 'currencyCode', 'ccy']))?.toUpperCase() || 'VND',

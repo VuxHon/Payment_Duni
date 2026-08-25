@@ -37,6 +37,13 @@ function callbackApiKeyAuthenticated(req: Request) {
   return Boolean(config.ACB_WEBHOOK_TOKEN && supplied && safeEqual(supplied, config.ACB_WEBHOOK_TOKEN));
 }
 
+const callbackResponse = (code = '00000000', message = 'Success') => ({
+  responseCode: code,
+  responseMessage: message,
+  errorCode: code === '00000000' ? '00' : code,
+  errorMessage: message
+});
+
 async function receiveWebhook(req: Request, res: Response, forcedType?: InboxEventType, allowPublic = false) {
   const pathTokenOk = req.params.token ? safeEqual(String(req.params.token), config.ACB_CALLBACK_TOKEN) : false;
   const headerAuth = webhookAuthenticated(req);
@@ -54,7 +61,7 @@ async function receiveWebhook(req: Request, res: Response, forcedType?: InboxEve
       authenticated: pathTokenOk || headerAuth,
       eventType: forcedType || classifyEvent(body)
     });
-    res.status(200).json({ errorCode: '00', errorMessage: 'Success', ...(result.duplicate ? { duplicate: true } : {}) });
+    res.status(200).json({ ...callbackResponse(), ...(result.duplicate ? { duplicate: true } : {}) });
     if (!result.duplicate) setImmediate(() => { void runInboxOnce(); });
   } catch (error) {
     console.error('Không thể ghi callback vào durable inbox', error);
@@ -78,7 +85,7 @@ function receivePublicCallbackImmediate(req: Request, res: Response) {
   }
 
   // ACB cần ACK ngay; việc ghi durable inbox và xử lý nghiệp vụ diễn ra sau response.
-  res.status(200).json({ errorCode: '00', errorMessage: 'Success' });
+  res.status(200).json(callbackResponse());
 
   setImmediate(() => {
     void enqueueWebhook({
@@ -114,6 +121,8 @@ app.post('/api/webhooks/acb/rtxn-notification/:token', (req, res) => receiveWebh
 app.post('/api/webhooks/acb/rtxn-notification', (req, res) => receiveWebhook(req, res, 'TRANSACTION_NOTIFICATION'));
 app.post('/api/acb/callback/:token', (req, res) => receiveWebhook(req, res));
 app.post('/rtxn-notification/:token', (req, res) => receiveWebhook(req, res, 'TRANSACTION_NOTIFICATION'));
+app.post('/rtxn-notification', receivePublicCallbackImmediate);
+app.post('/callback', (req, res) => receiveWebhook(req, res, 'STATEMENT_RESULT'));
 
 app.use('/api', requireAuth);
 
@@ -124,6 +133,8 @@ app.get('/api/config', (_req, res) => {
     statementCallbackUrl: `${root}/api/callback/statement`,
     acbConfigured: acb.configured(),
     acbRequestHeadersConfigured: acb.requestHeadersConfigured(),
+    acbSandboxConfigured: acb.sandboxConfigured(),
+    acbTestAccount: config.ACB_TEST_ACCOUNT || null,
     postgresSsl: config.POSTGRES_SSL === 'true',
     environment: config.NODE_ENV
   });
@@ -204,6 +215,8 @@ app.get('/api/acb/transaction-detail', acbRoute(acb.transactionDetail));
 app.get('/api/acb/statement/retrieve', acbRoute(acb.statementRetrieve));
 app.get('/api/acb/statement/inquiry', acbRoute(acb.statementInquiry));
 app.post('/api/acb/e-statement/registration', acbRoute(acb.registerEStatement, 'body'));
+app.post('/api/acb/sandbox/credit', acbRoute(acb.sandboxCredit, 'body'));
+app.post('/api/acb/sandbox/debit', acbRoute(acb.sandboxDebit, 'body'));
 
 app.get('/api/ops/status', async (_req, res, next) => { try {
   const queues = await pool.query(`SELECT status,COUNT(*)::int count FROM webhook_deliveries GROUP BY status`);
