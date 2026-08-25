@@ -57,11 +57,37 @@ async function processTransactions(client: import('pg').PoolClient, delivery: { 
     const txn = normalizeTransaction(raw);
     const inserted = await client.query(`INSERT INTO transactions
       (source_delivery_id,bank_reference,account_number,counterparty_account,counterparty_name,direction,amount,currency,description,transaction_time,balance_after,raw_payload,dedupe_key)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (dedupe_key) DO NOTHING`, [
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (dedupe_key) DO NOTHING RETURNING id`, [
       delivery.id, txn.bankReference, txn.accountNumber, txn.counterpartyAccount, txn.counterpartyName,
       txn.direction, txn.amount, txn.currency, txn.description, txn.transactionTime, txn.balanceAfter,
       txn.rawPayload, txn.dedupeKey
     ]);
+    if (inserted.rows[0]?.id && txn.accountNumber && txn.amount > 0 && txn.direction !== 'UNKNOWN') {
+      const transactionId = String(inserted.rows[0].id);
+      const transactionDate = txn.transactionTime.toISOString().slice(0, 10);
+      const documentNumber = txn.bankReference || `ACB-${txn.dedupeKey.slice(0, 24)}`;
+      const payload = {
+        requestId: transactionId,
+        sourceEnvironment: config.ACB_ENVIRONMENT,
+        accountNumber: txn.accountNumber,
+        observedAt: new Date().toISOString(),
+        transactions: [{
+          paymentTransactionId: transactionId,
+          transactionDate,
+          effectiveDate: transactionDate,
+          documentNumber,
+          debitAmount: txn.direction === 'DEBIT' ? txn.amount : 0,
+          creditAmount: txn.direction === 'CREDIT' ? txn.amount : 0,
+          runningBalance: txn.balanceAfter,
+          description: txn.description || documentNumber,
+          currency: txn.currency,
+          counterpartyAccount: txn.counterpartyAccount,
+          counterpartyName: txn.counterpartyName
+        }]
+      };
+      await client.query(`INSERT INTO admin_sync_outbox (transaction_id,payload)
+        VALUES ($1,$2) ON CONFLICT (transaction_id) DO NOTHING`, [transactionId, payload]);
+    }
     count += inserted.rowCount || 0;
   }
   return count;

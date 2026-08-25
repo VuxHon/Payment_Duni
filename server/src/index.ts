@@ -5,10 +5,12 @@ import cookieParser from 'cookie-parser';
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { acb, AcbApiError } from './acb.js';
+import { startAdminSyncWorker, stopAdminSyncWorker } from './admin-sync.js';
 import { clearSession, requireAuth, setSession, verifyLogin } from './auth.js';
 import { acbClientSecret, config, isProduction } from './config.js';
 import { migrate, pool } from './db.js';
-import { classifyEvent, enqueueWebhook, runInboxOnce, startInboxWorker, stopInboxWorker, type InboxEventType } from './inbox.js';
+import { classifyEvent, enqueueWebhook, publicHeaders, runInboxOnce, startInboxWorker, stopInboxWorker, type InboxEventType } from './inbox.js';
+import { initSpool, spoolStatus, spoolWebhook, startSpoolWorker, stopSpoolWorker } from './spool.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -70,7 +72,7 @@ async function receiveWebhook(req: Request, res: Response, forcedType?: InboxEve
   }
 }
 
-function receivePublicCallbackImmediate(req: Request, res: Response) {
+async function receivePublicCallbackImmediate(req: Request, res: Response) {
   const body = req.body;
   const headers = req.headers;
   const remoteIp = req.ip || null;
@@ -84,28 +86,27 @@ function receivePublicCallbackImmediate(req: Request, res: Response) {
     return res.status(400).json({ errorCode: '02', errorMessage: 'Invalid JSON body' });
   }
 
-  // ACB cần ACK ngay; việc ghi durable inbox và xử lý nghiệp vụ diễn ra sau response.
-  res.status(200).json(callbackResponse());
-
-  setImmediate(() => {
-    void enqueueWebhook({
+  try {
+    // Queue nằm trên đĩa VPS, độc lập PostgreSQL .24. Chỉ ACK sau atomic write + fsync.
+    const result = await spoolWebhook({
       body,
-      headers,
+      headers: publicHeaders(headers),
       remoteIp,
       authenticated,
       eventType: classifyEvent(body)
-    }).then((result) => {
-      if (!result.duplicate) return runInboxOnce();
-    }).catch((error) => {
-      console.error('Callback đã ACK 200 nhưng không thể ghi durable inbox', error);
     });
-  });
+    return res.status(200).json({ ...callbackResponse(), ...(result.duplicate ? { duplicate: true } : {}) });
+  } catch (error) {
+    console.error('Không thể ghi callback vào local durable spool', error);
+    return res.status(503).json({ errorCode: '99', errorMessage: 'Temporary unavailable' });
+  }
 }
 app.get('/api/health', async (_req, res) => {
+  const spool = await spoolStatus().catch(() => ({ pending: -1, deadLetter: -1, directory: config.LOCAL_SPOOL_DIR }));
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', database: 'connected', worker: 'running', timestamp: new Date().toISOString() });
-  } catch { res.status(503).json({ status: 'error', database: 'disconnected' }); }
+    res.json({ status: 'ok', database: 'connected', worker: 'running', spool, timestamp: new Date().toISOString() });
+  } catch { res.json({ status: 'degraded', database: 'disconnected', worker: 'spooling', spool, timestamp: new Date().toISOString() }); }
 });
 app.post('/api/auth/login', (req, res) => {
   if (!verifyLogin(String(req.body?.username || ''), String(req.body?.password || ''))) return res.status(401).json({ message: 'Thông tin đăng nhập không hợp lệ' });
@@ -220,13 +221,15 @@ app.post('/api/acb/sandbox/debit', acbRoute(acb.sandboxDebit, 'body'));
 
 app.get('/api/ops/status', async (_req, res, next) => { try {
   const queues = await pool.query(`SELECT status,COUNT(*)::int count FROM webhook_deliveries GROUP BY status`);
+  const adminSync = await pool.query(`SELECT status,COUNT(*)::int count FROM admin_sync_outbox GROUP BY status`);
   const latest = await pool.query(`SELECT id,event_type,status,attempts,transaction_count,error_message,authenticated,received_at,processed_at
     FROM webhook_deliveries ORDER BY received_at DESC LIMIT 30`);
   const apiRequests = await pool.query(`SELECT id,operation,method,path,request_id,response_status,duration_ms,error_message,created_at
     FROM acb_api_requests ORDER BY created_at DESC LIMIT 20`);
   const statements = await pool.query(`SELECT id,request_reference,account_number,result_status,file_url,received_at
     FROM statement_results ORDER BY received_at DESC LIMIT 20`);
-  res.json({ queues: Object.fromEntries(queues.rows.map(row => [row.status, row.count])), latest: latest.rows,
+  res.json({ queues: Object.fromEntries(queues.rows.map(row => [row.status, row.count])),
+    adminSync: Object.fromEntries(adminSync.rows.map(row => [row.status, row.count])), spool: await spoolStatus(), latest: latest.rows,
     apiRequests: apiRequests.rows, statementResults: statements.rows });
 } catch (error) { next(error); } });
 
@@ -251,12 +254,45 @@ app.use((error: unknown, _req: Request, res: Response, _next: express.NextFuncti
   res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
 });
 
-await migrate();
-startInboxWorker();
+await initSpool();
+startSpoolWorker(async envelope => {
+  const result = await enqueueWebhook({
+    body: envelope.body,
+    headers: envelope.headers,
+    remoteIp: envelope.remoteIp,
+    authenticated: envelope.authenticated,
+    eventType: envelope.eventType
+  });
+  if (!result.duplicate) setImmediate(() => { void runInboxOnce(); });
+});
+
+let databaseReady = false;
+let databaseConnecting = false;
+async function ensureDatabaseReady() {
+  if (databaseReady || databaseConnecting) return;
+  databaseConnecting = true;
+  try {
+    await migrate();
+    databaseReady = true;
+    startInboxWorker();
+    startAdminSyncWorker();
+    console.log('PostgreSQL migrations ready; database workers started');
+  } catch (error) {
+    console.error('PostgreSQL unavailable; callbacks remain protected by local spool', error instanceof Error ? error.message : String(error));
+  } finally {
+    databaseConnecting = false;
+  }
+}
+void ensureDatabaseReady();
+const databaseRetryTimer = setInterval(() => { void ensureDatabaseReady(); }, 10_000);
+databaseRetryTimer.unref();
 const server = app.listen(config.PORT, '127.0.0.1', () => console.log(`Payment Duni listening on 127.0.0.1:${config.PORT}`));
 
 async function shutdown() {
   stopInboxWorker();
+  stopSpoolWorker();
+  stopAdminSyncWorker();
+  clearInterval(databaseRetryTimer);
   server.close();
   await pool.end();
   process.exit(0);

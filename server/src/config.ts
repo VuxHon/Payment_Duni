@@ -53,9 +53,18 @@ const schema = z.object({
   ACB_WEBHOOK_TOKEN: z.string().optional(),
   ACB_WEBHOOK_AUTH_REQUIRED: z.enum(['true', 'false']).default('true'),
   ACB_CALLBACK_MAX_BODY_BYTES: z.coerce.number().int().min(1024).max(10_000_000).default(1_048_576),
+  ACB_ENVIRONMENT: z.enum(['SANDBOX', 'PRODUCTION']).default('SANDBOX'),
+  LOCAL_SPOOL_DIR: z.string().min(1).default('./data/spool'),
+  SPOOL_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(2000),
+  SPOOL_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
   INBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60000).default(1000),
   INBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
-  INBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8)
+  INBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
+  ADMIN_SYNC_URL: z.preprocess(value => value === '' ? undefined : value, z.string().url().optional()),
+  ADMIN_SYNC_SHARED_SECRET: z.string().min(32).optional(),
+  ADMIN_SYNC_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(2000),
+  ADMIN_SYNC_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(15000),
+  ADMIN_SYNC_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(20)
 });
 
 export const config = schema.parse(process.env);
@@ -65,3 +74,4 @@ export const acbApiSecret = config.ACB_API_SECRET || acbClientSecret;
 export const acbConfigured = Boolean(config.CLIENT_ID && acbClientSecret);
 export const acbRequestHeadersConfigured = Boolean(config.ACB_X_CHANNEL && config.ACB_PROVIDER_ID && config.ACB_SERVICE);
 export const acbSandboxConfigured = Boolean(acbConfigured && acbRequestHeadersConfigured);
+export const adminSyncConfigured = Boolean(config.ADMIN_SYNC_URL && config.ADMIN_SYNC_SHARED_SECRET);

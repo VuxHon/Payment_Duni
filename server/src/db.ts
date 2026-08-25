@@ -87,11 +87,29 @@ export async function migrate() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS admin_sync_outbox (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      transaction_id uuid NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE RESTRICT,
+      payload jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING','PROCESSING','RETRY','SENT','DEAD_LETTER')),
+      attempts integer NOT NULL DEFAULT 0,
+      next_attempt_at timestamptz NOT NULL DEFAULT now(),
+      locked_at timestamptz,
+      sent_at timestamptz,
+      response_status integer,
+      error_message text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
     CREATE INDEX IF NOT EXISTS transactions_time_idx ON transactions (transaction_time DESC);
     CREATE INDEX IF NOT EXISTS transactions_direction_idx ON transactions (direction, transaction_time DESC);
     CREATE INDEX IF NOT EXISTS transactions_reference_idx ON transactions (bank_reference);
     CREATE INDEX IF NOT EXISTS deliveries_received_idx ON webhook_deliveries (received_at DESC);
     CREATE INDEX IF NOT EXISTS deliveries_worker_idx ON webhook_deliveries (status, next_attempt_at, received_at);
     CREATE INDEX IF NOT EXISTS api_requests_created_idx ON acb_api_requests (created_at DESC);
+    CREATE INDEX IF NOT EXISTS admin_sync_outbox_worker_idx
+      ON admin_sync_outbox (status, next_attempt_at, created_at);
   `);
 }

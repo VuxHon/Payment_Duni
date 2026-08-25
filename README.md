@@ -8,7 +8,9 @@ Website quản lý tiền vào/ra, tài khoản, số dư, lịch sử giao dị
 - Callback kết quả sổ phụ: `https://payment.byduni.com/api/callback/statement`
 - Callback có token tương thích cũ: `/api/webhooks/acb/rtxn-notification/<ACB_CALLBACK_TOKEN>`
 
-URL callback chính yêu cầu `x-api-key: <ACB_WEBHOOK_TOKEN>`, trả HTTP 200 ngay sau khi xác thực/body hợp lệ rồi mới ghi inbox và xử lý nền. Worker chống trùng, retry theo backoff và chuyển sang `DEAD_LETTER` sau số lần cấu hình. Request thiếu/sai API key trả 401; JSON body không hợp lệ trả 400.
+URL callback chính yêu cầu `x-api-key: <ACB_WEBHOOK_TOKEN>`. Hệ thống chỉ trả HTTP 200 sau khi payload đã được ghi nguyên tử và `fsync` vào local spool trên VPS; vì vậy PostgreSQL `192.168.31.24` tạm ngừng vẫn không làm mất callback. Worker chuyển bản ghi sang PostgreSQL, chỉ xóa file spool sau khi PostgreSQL xác nhận, sau đó tạo outbox để gửi HMAC sang AdminDuni. Cả inbox và outbox đều chống trùng, retry theo backoff và có `DEAD_LETTER`. Request thiếu/sai API key trả 401; JSON body không hợp lệ trả 400.
+
+Luồng lưu trữ: `ACB → local spool VPS → Payment PostgreSQL → admin_sync_outbox → AdminDuni`. Sandbox được gửi với `sourceEnvironment=SANDBOX` và AdminDuni cô lập vào bảng staging; chỉ `PRODUCTION` mới được ghi vào `bank_transaction` và chạy logic ghép đơn/kế toán. `ADMIN_SYNC_SHARED_SECRET` ở Payment phải trùng `ACB_PAYMENT_SHARED_SECRET` ở AdminDuni.
 
 ## Phạm vi ACB Account Information
 
@@ -40,6 +42,8 @@ Header outbound được cấu hình thay vì hard-code: `ACB_X_CHANNEL`, `ACB_P
 - Cookie phiên `HttpOnly`, `Secure` ở production và `SameSite=Strict`.
 - URL chính `/api/callback` chỉ chấp nhận API key qua header `x-api-key`. Các alias/callback chuyên biệt vẫn hỗ trợ Bearer/`x-webhook-token`, hoặc `x-client-id` + `x-client-secret` khi `ACB_WEBHOOK_AUTH_REQUIRED=true`.
 - Header nhạy cảm và secret bị loại khỏi audit log.
+- `LOCAL_SPOOL_DIR` phải trỏ tới thư mục bền vững ngoài source tree (khuyến nghị `/var/lib/payment-duni/spool`) và quyền chỉ dành cho user chạy PM2.
+- Request Payment → AdminDuni ký HMAC-SHA256 trên raw JSON kèm timestamp; AdminDuni từ chối chữ ký sai hoặc request quá 2 phút.
 
 ## Chạy và kiểm tra
 

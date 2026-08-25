@@ -6,6 +6,7 @@ server/dist/
 .env.*
 !.env.example
 tmp/
+data/spool/
 *.log
 *.tsbuildinfo
 .codex_ssh_askpass*.cmd
