@@ -9,7 +9,7 @@ export function statementsQueryError(input: Record<string, unknown>) {
   if (!account || !datePattern.test(fromDate) || fromDate !== toDate) return 'ACB yêu cầu account hợp lệ và from_date = to_date theo YYYY-MM-DD';
   const page = input.page === undefined ? undefined : Number(input.page);
   const size = input.size === undefined ? undefined : Number(input.size);
-  if ((page !== undefined && (!Number.isInteger(page) || page < 0)) || (size !== undefined && (!Number.isInteger(size) || size < 1 || size > 1000))) return 'page phải >= 0 và size phải từ 1 đến 1000';
+  if ((page !== undefined && (!Number.isInteger(page) || page < 1)) || (size !== undefined && (!Number.isInteger(size) || size < 1 || size > 1000))) return 'page phải >= 1 và size phải từ 1 đến 1000';
   return null;
 }
 

@@ -5,7 +5,9 @@ import { normalizeTransaction, transactionObjects } from './normalize.js';
 
 test('statements chỉ cho phép truy vấn trong cùng một ngày', () => {
   assert.equal(statementsQueryError({ account: '123', from_date: '2026-08-11', to_date: '2026-08-11' }), null);
+  assert.equal(statementsQueryError({ account: '123', from_date: '2026-08-11', to_date: '2026-08-11', page: 1 }), null);
   assert.ok(statementsQueryError({ account: '123', from_date: '2026-08-10', to_date: '2026-08-11' }));
+  assert.ok(statementsQueryError({ account: '123', from_date: '2026-08-11', to_date: '2026-08-11', page: 0 }));
 });
 
 test('transaction history giới hạn 100 gần nhất và 500 trong ngày', () => {
