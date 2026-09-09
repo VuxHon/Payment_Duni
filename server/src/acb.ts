@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { historyQueryError, statementsQueryError } from './acb-contract.js';
-import { acbApiSecret, acbClientSecret, acbConfigured, acbRequestHeadersConfigured, acbSandboxConfigured, config } from './config.js';
+import { acbApiSecret, acbConfigured, acbRequestHeadersConfigured, acbSandboxConfigured, acbSecretId, config } from './config.js';
 import { pool } from './db.js';
 
 type Json = Record<string, unknown> | unknown[];
@@ -32,17 +32,17 @@ async function parseResponse(response: Response): Promise<unknown> {
 }
 
 async function fetchToken(force = false) {
-  if (!acbConfigured) throw new AcbApiError('Chưa cấu hình CLIENT_ID/ACB_CLIENT_SECRET cho ACB Sandbox', 503, null);
+  if (!acbConfigured) throw new AcbApiError('Chưa cấu hình CLIENT_ID/SCRECET_ID cho ACB Sandbox', 503, null);
   if (!force && tokenCache && tokenCache.expiresAt > Date.now() + 30_000) return tokenCache.value;
 
   const clientId = config.CLIENT_ID || '';
   const form = new URLSearchParams({
     client_id: clientId,
-    client_secret: acbClientSecret,
+    client_secret: acbSecretId,
     grant_type: config.ACB_GRANT_TYPE
   });
   if (config.ACB_SCOPE) form.set('scope', config.ACB_SCOPE);
-  const basicAuthorization = Buffer.from(`${clientId}:${acbClientSecret}`, 'utf8').toString('base64');
+  const basicAuthorization = Buffer.from(`${clientId}:${acbSecretId}`, 'utf8').toString('base64');
   const response = await fetch(config.ACB_TOKEN_URL, {
     method: 'POST',
     headers: {

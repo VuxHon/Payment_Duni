@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import { acb, AcbApiError } from './acb.js';
 import { startAdminSyncWorker, stopAdminSyncWorker } from './admin-sync.js';
 import { clearSession, requireAuth, setSession, verifyLogin } from './auth.js';
-import { acbClientSecret, config, isProduction } from './config.js';
+import { acbSecretId, config, isProduction } from './config.js';
 import { migrate, pool } from './db.js';
 import { classifyEvent, enqueueWebhook, publicHeaders, runInboxOnce, startInboxWorker, stopInboxWorker, type InboxEventType } from './inbox.js';
 import { initSpool, spoolStatus, spoolWebhook, startSpoolWorker, stopSpoolWorker } from './spool.js';
@@ -30,7 +30,7 @@ function webhookAuthenticated(req: Request) {
   const suppliedSecret = String(req.headers['x-client-secret'] || '');
   return Boolean(
     (config.ACB_WEBHOOK_TOKEN && safeEqual(token, config.ACB_WEBHOOK_TOKEN)) ||
-    (config.CLIENT_ID && acbClientSecret && safeEqual(suppliedClient, config.CLIENT_ID) && safeEqual(suppliedSecret, acbClientSecret))
+    (config.CLIENT_ID && acbSecretId && safeEqual(suppliedClient, config.CLIENT_ID) && safeEqual(suppliedSecret, acbSecretId))
   );
 }
 

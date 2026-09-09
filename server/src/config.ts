@@ -20,7 +20,6 @@ const schema = z.object({
 
   CLIENT_ID: z.string().optional(),
   SCRECET_ID: z.string().optional(),
-  ACB_CLIENT_SECRET: z.string().optional(),
   ACB_BASE_URL: z.string().url().default('https://sandbox.acb.com.vn'),
   ACB_TOKEN_URL: z.string().url().default('https://sandbox.acb.com.vn/acb/open/iam/id/v1/auth/realms/soba/protocol/openid-connect/token'),
   ACB_GRANT_TYPE: z.string().default('client_credentials'),
@@ -69,9 +68,9 @@ const schema = z.object({
 
 export const config = schema.parse(process.env);
 export const isProduction = config.NODE_ENV === 'production';
-export const acbClientSecret = config.ACB_CLIENT_SECRET || config.SCRECET_ID || '';
-export const acbApiSecret = config.ACB_API_SECRET || acbClientSecret;
-export const acbConfigured = Boolean(config.CLIENT_ID && acbClientSecret);
+export const acbSecretId = config.SCRECET_ID || '';
+export const acbApiSecret = config.ACB_API_SECRET || acbSecretId;
+export const acbConfigured = Boolean(config.CLIENT_ID && acbSecretId);
 export const acbRequestHeadersConfigured = Boolean(config.ACB_X_CHANNEL && config.ACB_PROVIDER_ID && config.ACB_SERVICE);
 export const acbSandboxConfigured = Boolean(acbConfigured && acbRequestHeadersConfigured);
 export const adminSyncConfigured = Boolean(config.ADMIN_SYNC_URL && config.ADMIN_SYNC_SHARED_SECRET);
