@@ -135,7 +135,7 @@ app.get('/api/config', (_req, res) => {
     acbConfigured: acb.configured(),
     acbRequestHeadersConfigured: acb.requestHeadersConfigured(),
     acbSandboxConfigured: acb.sandboxConfigured(),
-    acbTestAccount: config.ACB_TEST_ACCOUNT || null,
+    acbAccountNumber: config.ACB_ACCOUNT_NUMBER || null,
     postgresSsl: config.POSTGRES_SSL === 'true',
     environment: config.NODE_ENV
   });

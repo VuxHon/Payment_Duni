@@ -28,7 +28,7 @@ const schema = z.object({
   ACB_X_CHANNEL: z.string().optional(),
   ACB_PROVIDER_ID: z.string().optional(),
   ACB_SERVICE: z.string().optional(),
-  ACB_TEST_ACCOUNT: z.string().optional(),
+  ACB_ACCOUNT_NUMBER: z.string().optional(),
   ACB_API_SECRET: z.string().optional(),
   ACB_HEADER_CHANNEL_NAME: headerName.default('x-channel'),
   ACB_HEADER_REQUEST_ID_NAME: headerName.default('x-request-id'),

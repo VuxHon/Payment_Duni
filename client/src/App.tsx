@@ -15,7 +15,7 @@ type Summary = { totalCredit: number; totalDebit: number; net: number; count: nu
 type ListResponse = { items: Transaction[]; total: number; page: number; pageSize: number };
 type AppConfig = {
   callbackUrl: string; statementCallbackUrl: string; acbConfigured: boolean; acbRequestHeadersConfigured: boolean;
-  acbSandboxConfigured: boolean; acbTestAccount: string | null; postgresSsl: boolean; environment: string;
+  acbSandboxConfigured: boolean; acbAccountNumber: string | null; postgresSsl: boolean; environment: string;
 };
 type Ops = {
   queues: Record<string, number>;
@@ -84,7 +84,7 @@ function Accounts({ config, reportError }: { config: AppConfig | null; reportErr
   const [result, setResult] = useState<unknown>(null); const [busy, setBusy] = useState(false);
   const [testAmount, setTestAmount] = useState('10000'); const [testCount, setTestCount] = useState('1');
   const [testDescription, setTestDescription] = useState('BYDUNI SANDBOX TEST');
-  useEffect(() => { if (!account && config?.acbTestAccount) setAccount(config.acbTestAccount); }, [account, config?.acbTestAccount]);
+  useEffect(() => { if (!account && config?.acbAccountNumber) setAccount(config.acbAccountNumber); }, [account, config?.acbAccountNumber]);
   const outboundReady = Boolean(config?.acbConfigured && config?.acbRequestHeadersConfigured);
   const execute = async (selected = mode) => {
     setMode(selected); setBusy(true); reportError('');
