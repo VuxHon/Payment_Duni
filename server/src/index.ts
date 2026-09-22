@@ -5,9 +5,9 @@ import cookieParser from 'cookie-parser';
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { acb, AcbApiError } from './acb.js';
-import { startAdminSyncWorker, stopAdminSyncWorker } from './admin-sync.js';
+import { runAdminSyncOnce, startAdminSyncWorker, stopAdminSyncWorker } from './admin-sync.js';
 import { clearSession, requireAuth, setSession, verifyLogin } from './auth.js';
-import { acbSecretId, config, isProduction } from './config.js';
+import { acbSecretId, adminSyncConfigured, config, isProduction } from './config.js';
 import { migrate, pool } from './db.js';
 import { classifyEvent, enqueueWebhook, publicHeaders, runInboxOnce, startInboxWorker, stopInboxWorker, type InboxEventType } from './inbox.js';
 import { initSpool, spoolStatus, spoolWebhook, startSpoolWorker, stopSpoolWorker } from './spool.js';
@@ -222,6 +222,10 @@ app.post('/api/acb/sandbox/debit', acbRoute(acb.sandboxDebit, 'body'));
 app.get('/api/ops/status', async (_req, res, next) => { try {
   const queues = await pool.query(`SELECT status,COUNT(*)::int count FROM webhook_deliveries GROUP BY status`);
   const adminSync = await pool.query(`SELECT status,COUNT(*)::int count FROM admin_sync_outbox GROUP BY status`);
+  const adminSyncLatest = await pool.query(`SELECT o.id,o.transaction_id,o.status,o.attempts,o.next_attempt_at,o.sent_at,
+    o.response_status,o.error_message,o.created_at,o.updated_at,t.bank_reference,t.account_number,t.amount,t.currency,t.description
+    FROM admin_sync_outbox o JOIN transactions t ON t.id=o.transaction_id
+    ORDER BY o.updated_at DESC LIMIT 30`);
   const latest = await pool.query(`SELECT id,event_type,status,attempts,transaction_count,error_message,authenticated,received_at,processed_at
     FROM webhook_deliveries ORDER BY received_at DESC LIMIT 30`);
   const apiRequests = await pool.query(`SELECT id,operation,method,path,request_id,response_status,duration_ms,error_message,created_at
@@ -229,7 +233,8 @@ app.get('/api/ops/status', async (_req, res, next) => { try {
   const statements = await pool.query(`SELECT id,request_reference,account_number,result_status,file_url,received_at
     FROM statement_results ORDER BY received_at DESC LIMIT 20`);
   res.json({ queues: Object.fromEntries(queues.rows.map(row => [row.status, row.count])),
-    adminSync: Object.fromEntries(adminSync.rows.map(row => [row.status, row.count])), spool: await spoolStatus(), latest: latest.rows,
+    adminSync: Object.fromEntries(adminSync.rows.map(row => [row.status, row.count])), adminSyncConfigured,
+    adminSyncLatest: adminSyncLatest.rows, spool: await spoolStatus(), latest: latest.rows,
     apiRequests: apiRequests.rows, statementResults: statements.rows });
 } catch (error) { next(error); } });
 
@@ -238,6 +243,15 @@ app.post('/api/ops/deliveries/:id/requeue', async (req, res, next) => { try {
     WHERE id=$1 AND status IN ('DEAD_LETTER','RETRY') RETURNING id`, [req.params.id]);
   if (!result.rowCount) return res.status(409).json({ message: 'Delivery không ở trạng thái có thể chạy lại' });
   setImmediate(() => { void runInboxOnce(); });
+  res.json({ ok: true });
+} catch (error) { next(error); } });
+
+app.post('/api/ops/admin-sync/:id/requeue', async (req, res, next) => { try {
+  const result = await pool.query(`UPDATE admin_sync_outbox SET status='PENDING',attempts=0,next_attempt_at=now(),
+    locked_at=NULL,response_status=NULL,error_message=NULL,updated_at=now()
+    WHERE id=$1 AND status IN ('RETRY','DEAD_LETTER') RETURNING id`, [req.params.id]);
+  if (!result.rowCount) return res.status(409).json({ message: 'Giao dịch không ở trạng thái có thể đồng bộ lại' });
+  setImmediate(() => { void runAdminSyncOnce(); });
   res.json({ ok: true });
 } catch (error) { next(error); } });
 
