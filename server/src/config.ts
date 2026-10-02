@@ -53,6 +53,8 @@ const schema = z.object({
   ACB_WEBHOOK_AUTH_REQUIRED: z.enum(['true', 'false']).default('true'),
   ACB_CALLBACK_MAX_BODY_BYTES: z.coerce.number().int().min(1024).max(10_000_000).default(1_048_576),
   ACB_ENVIRONMENT: z.enum(['SANDBOX', 'PRODUCTION']).default('SANDBOX'),
+  ACB_HISTORY_POLL_ENABLED: z.enum(['true', 'false']).default('true'),
+  ACB_HISTORY_POLL_INTERVAL_MS: z.coerce.number().int().min(60_000).max(3_600_000).default(120_000),
   LOCAL_SPOOL_DIR: z.string().min(1).default('./data/spool'),
   SPOOL_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(2000),
   SPOOL_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),

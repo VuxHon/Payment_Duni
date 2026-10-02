@@ -11,6 +11,7 @@ import { acbSecretId, adminSyncConfigured, config, isProduction } from './config
 import { migrate, pool } from './db.js';
 import { classifyEvent, enqueueWebhook, publicHeaders, runInboxOnce, startInboxWorker, stopInboxWorker, type InboxEventType } from './inbox.js';
 import { initSpool, spoolStatus, spoolWebhook, startSpoolWorker, stopSpoolWorker } from './spool.js';
+import { historyPollStatus, startHistoryPollWorker, stopHistoryPollWorker } from './history-poll.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -105,7 +106,7 @@ app.get('/api/health', async (_req, res) => {
   const spool = await spoolStatus().catch(() => ({ pending: -1, deadLetter: -1, directory: config.LOCAL_SPOOL_DIR }));
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', database: 'connected', worker: 'running', spool, timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', database: 'connected', worker: 'running', spool, historyPoll: historyPollStatus(), timestamp: new Date().toISOString() });
   } catch { res.json({ status: 'degraded', database: 'disconnected', worker: 'spooling', spool, timestamp: new Date().toISOString() }); }
 });
 app.post('/api/auth/login', (req, res) => {
@@ -290,6 +291,7 @@ async function ensureDatabaseReady() {
     databaseReady = true;
     startInboxWorker();
     startAdminSyncWorker();
+    startHistoryPollWorker();
     console.log('PostgreSQL migrations ready; database workers started');
   } catch (error) {
     console.error('PostgreSQL unavailable; callbacks remain protected by local spool', error instanceof Error ? error.message : String(error));
@@ -306,6 +308,7 @@ async function shutdown() {
   stopInboxWorker();
   stopSpoolWorker();
   stopAdminSyncWorker();
+  stopHistoryPollWorker();
   clearInterval(databaseRetryTimer);
   server.close();
   await pool.end();

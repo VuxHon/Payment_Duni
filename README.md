@@ -4,6 +4,8 @@ Website quản lý tiền vào/ra, tài khoản, số dư, lịch sử giao dị
 
 ## Callback ACB
 
+Fallback lịch sử ACB chạy lúc khởi động và mỗi 2 phút (`ACB_HISTORY_POLL_ENABLED=true`, `ACB_HISTORY_POLL_INTERVAL_MS=120000`). Giao dịch Completed chưa có được đưa vào inbox/outbox hiện tại, dùng cùng mã tham chiếu và unique dedupe key với webhook để chống trùng kể cả khi hai luồng chạy đồng thời. `/api/health` trả `historyPoll` với lần chạy/lỗi/số giao dịch đã lấy và đưa vào inbox. Tắt fallback bằng `ACB_HISTORY_POLL_ENABLED=false` rồi restart. Lịch sử ACB hiện trả 5 giao dịch gần nhất dù request `limit=100`: polling không đảm bảo backfill đầy đủ nếu mất kết nối lâu hoặc có hơn 5 giao dịch giữa hai lần chạy. Giao dịch không có giờ chính xác trong lịch sử được đánh dấu `historyDateOnly` và dùng ngày hạch toán.
+
 - Callback tổng hợp: `https://payment.byduni.com/api/callback`
 - Callback kết quả sổ phụ: `https://payment.byduni.com/api/callback/statement`
 - Callback có token tương thích cũ: `/api/webhooks/acb/rtxn-notification/<ACB_CALLBACK_TOKEN>`
